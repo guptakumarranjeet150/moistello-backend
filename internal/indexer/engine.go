@@ -207,7 +207,7 @@ func (e *Engine) poll(ctx context.Context) error {
 			if err := e.processor.ProcessTransaction(ctx, txn); err != nil {
 				log.Error().Err(err).Str("hash", txn.Hash).Msg("processing failed")
 				e.metrics.ProcessErrors.Inc()
-				e.deadLetter(ctx, &txn, err)
+				e.deadLetter(ctx, txn, err)
 				continue
 			}
 			processed++

@@ -95,7 +95,7 @@ func newCSRFTestRouter(t *testing.T, mutate ...func(*config.Config)) (*gin.Engin
 		&handler.CommunityHandler{}, &handler.WebSocketHandler{}, &handler.SavingsGoalHandler{},
 		&handler.TokenHandler{}, &handler.SwapHandler{}, &handler.GovernanceHandler{},
 		&handler.ReputationHandler{}, &handler.ReferralHandler{}, &handler.ConsentHandler{},
-		&handler.AdminJobQueueHandler{}, nil, &handler.YellowCardWebhookHandler{},
+		&handler.AdminJobQueueHandler{}, &handler.AdminIndexerHandler{}, nil, &handler.YellowCardWebhookHandler{},
 		pubPEM,
 	)
 	return r, token

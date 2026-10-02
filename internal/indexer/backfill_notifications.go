@@ -15,10 +15,10 @@ import (
 // The job processes events in batches to avoid memory exhaustion and supports
 // resume via checkpoint tracking.
 type BackfillNotifications struct {
-	eventRepo   EventRepository
-	notifRepo   NotificationRepository
-	batchSize   int
-	checkpoint  *BackfillCheckpoint
+	eventRepo  EventRepository
+	notifRepo  NotificationRepository
+	batchSize  int
+	checkpoint *BackfillCheckpoint
 }
 
 type BackfillCheckpoint struct {
@@ -138,6 +138,21 @@ type Event struct {
 	Title     string
 	Body      string
 	Data      []byte
+	CreatedAt time.Time
+}
+
+// Notification is the backfill projection written by processEvent. It is a
+// lightweight standalone struct (not the domain notification model) because
+// the backfill works with raw string IDs from historical events.
+type Notification struct {
+	ID        string
+	UserID    string
+	Type      string
+	Title     string
+	Body      string
+	Data      []byte
+	Channel   string
+	Read      bool
 	CreatedAt time.Time
 }
 

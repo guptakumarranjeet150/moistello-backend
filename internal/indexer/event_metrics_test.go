@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -26,7 +27,7 @@ func newCountingProcessor(t *testing.T, knownContracts ...string) (*EventProcess
 	return p, counters
 }
 
-func counterValue(t *testing.T, vec *prometheus.CounterVec, eventType string) float64 {
+func counterVecValue(t *testing.T, vec *prometheus.CounterVec, eventType string) float64 {
 	t.Helper()
 	return testutil.ToFloat64(vec.WithLabelValues(eventType))
 }
@@ -53,30 +54,30 @@ func TestEventCounters_MixedEventLoad(t *testing.T) {
 		*contractEvent(EventDisputeRaised, "stranger", nil),
 	}
 
-	p.processContractEvents(context.Background(), "tx1", events)
+	p.processContractEvents(context.Background(), "tx1", events, time.Now().UTC())
 
 	// Handlers that only log and broadcast succeed: FeeDeposited, VoteCast.
-	assert.Equal(t, 3.0, counterValue(t, counters.Received, EventFeeDeposited))
-	assert.Equal(t, 3.0, counterValue(t, counters.Decoded, EventFeeDeposited))
-	assert.Equal(t, 0.0, counterValue(t, counters.Failed, EventFeeDeposited))
-	assert.Equal(t, 0.0, counterValue(t, counters.DLQ, EventFeeDeposited))
+	assert.Equal(t, 3.0, counterVecValue(t, counters.Received, EventFeeDeposited))
+	assert.Equal(t, 3.0, counterVecValue(t, counters.Decoded, EventFeeDeposited))
+	assert.Equal(t, 0.0, counterVecValue(t, counters.Failed, EventFeeDeposited))
+	assert.Equal(t, 0.0, counterVecValue(t, counters.DLQ, EventFeeDeposited))
 
-	assert.Equal(t, 2.0, counterValue(t, counters.Received, EventVoteCast))
-	assert.Equal(t, 2.0, counterValue(t, counters.Decoded, EventVoteCast))
+	assert.Equal(t, 2.0, counterVecValue(t, counters.Received, EventVoteCast))
+	assert.Equal(t, 2.0, counterVecValue(t, counters.Decoded, EventVoteCast))
 
 	// Handlers backed by nil repositories fail, and must be counted as failed
 	// rather than silently dropped.
 	for _, evType := range []string{EventMemberJoined, EventContributionReceived, EventPayoutExecuted} {
-		assert.Equal(t, 1.0, counterValue(t, counters.Received, evType), evType)
-		assert.Equal(t, 1.0, counterValue(t, counters.Failed, evType), evType)
-		assert.Equal(t, 0.0, counterValue(t, counters.Decoded, evType), evType)
+		assert.Equal(t, 1.0, counterVecValue(t, counters.Received, evType), evType)
+		assert.Equal(t, 1.0, counterVecValue(t, counters.Failed, evType), evType)
+		assert.Equal(t, 0.0, counterVecValue(t, counters.Decoded, evType), evType)
 	}
 
 	// Unknown-contract events are received and dead-lettered, never decoded.
-	assert.Equal(t, 2.0, counterValue(t, counters.Received, EventDisputeRaised))
-	assert.Equal(t, 2.0, counterValue(t, counters.DLQ, EventDisputeRaised))
-	assert.Equal(t, 0.0, counterValue(t, counters.Decoded, EventDisputeRaised))
-	assert.Equal(t, 0.0, counterValue(t, counters.Failed, EventDisputeRaised))
+	assert.Equal(t, 2.0, counterVecValue(t, counters.Received, EventDisputeRaised))
+	assert.Equal(t, 2.0, counterVecValue(t, counters.DLQ, EventDisputeRaised))
+	assert.Equal(t, 0.0, counterVecValue(t, counters.Decoded, EventDisputeRaised))
+	assert.Equal(t, 0.0, counterVecValue(t, counters.Failed, EventDisputeRaised))
 }
 
 // TestEventCounters_PartitionHolds asserts the invariant operators rely on:
@@ -91,13 +92,13 @@ func TestEventCounters_PartitionHolds(t *testing.T) {
 		*contractEvent(EventDisputeRaised, "known", map[string]any{"circle_id": "c"}),
 		*contractEvent(EventDisputeRaised, "stranger", nil),
 	}
-	p.processContractEvents(context.Background(), "tx1", events)
+	p.processContractEvents(context.Background(), "tx1", events, time.Now().UTC())
 
 	for _, evType := range []string{EventFeeDeposited, EventMemberJoined, EventAuctionBid, EventDisputeRaised} {
-		received := counterValue(t, counters.Received, evType)
-		rest := counterValue(t, counters.Decoded, evType) +
-			counterValue(t, counters.Failed, evType) +
-			counterValue(t, counters.DLQ, evType)
+		received := counterVecValue(t, counters.Received, evType)
+		rest := counterVecValue(t, counters.Decoded, evType) +
+			counterVecValue(t, counters.Failed, evType) +
+			counterVecValue(t, counters.DLQ, evType)
 		assert.Equal(t, rest, received, "received must equal decoded+failed+dlq for %s", evType)
 	}
 }
@@ -113,10 +114,10 @@ func TestEventCounters_NewEventTypeNeedsNoCodeChange(t *testing.T) {
 
 	p.processContractEvents(context.Background(), "tx1", []ContractEvent{
 		*contractEvent(brandNewType, "known", nil),
-	})
+	}, time.Now().UTC())
 
-	assert.Equal(t, 1.0, counterValue(t, counters.Received, brandNewType))
-	assert.Equal(t, 1.0, counterValue(t, counters.Decoded, brandNewType))
+	assert.Equal(t, 1.0, counterVecValue(t, counters.Received, brandNewType))
+	assert.Equal(t, 1.0, counterVecValue(t, counters.Decoded, brandNewType))
 
 	// And it is exported under its own label on the metrics endpoint.
 	body := scrape(t, counters)
@@ -136,8 +137,8 @@ func TestEventCounters_AllKnownTypesAreCounted(t *testing.T) {
 			p, counters := newCountingProcessor(t, "known")
 			p.processContractEvents(context.Background(), "tx1", []ContractEvent{
 				*contractEvent(evType, "known", nil),
-			})
-			assert.Equal(t, 1.0, counterValue(t, counters.Received, evType),
+			}, time.Now().UTC())
+			assert.Equal(t, 1.0, counterVecValue(t, counters.Received, evType),
 				"every contract event type must be counted, including ones whose handler has no repository yet")
 		})
 	}

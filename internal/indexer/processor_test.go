@@ -522,7 +522,7 @@ func TestProcessContractEvents_UnknownContractSkipped(t *testing.T) {
 
 	p.processContractEvents(context.Background(), "tx1", []ContractEvent{
 		*contractEvent(EventCircleCreated, "stranger", nil),
-	})
+	}, time.Now().UTC())
 
 	assert.Equal(t, 1.0, testutil.ToFloat64(p.unknownEvents))
 }
@@ -538,7 +538,7 @@ func TestProcessContractEvents_PoisonEventDoesNotHaltProcessing(t *testing.T) {
 		p.processContractEvents(context.Background(), "tx1", []ContractEvent{
 			*contractEvent(EventCircleCreated, "known", nil),
 			*contractEvent(EventCircleCreated, "stranger", nil),
-		})
+		}, time.Now().UTC())
 	})
 	assert.Equal(t, 1.0, testutil.ToFloat64(p.unknownEvents))
 }
@@ -608,7 +608,7 @@ func TestBroadcast_CallsWsBroadcast(t *testing.T) {
 		capturedCircleID = circleID
 	})
 
-	p.Broadcast(context.Background(), "circle-123", "circle.created", map[string]any{})
+	p.Broadcast(context.Background(), "circle-123", "circle.created", map[string]any{}, time.Now().UTC())
 
 	assert.True(t, called)
 	assert.Equal(t, "circle-123", capturedCircleID)
@@ -881,4 +881,3 @@ func TestOnFeeDeposited_Persistence(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, mockSql.ExpectationsWereMet())
 }
-

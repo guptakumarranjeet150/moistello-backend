@@ -157,6 +157,16 @@ func txnTime(txn *Transaction) time.Time {
 	return time.Now().UTC()
 }
 
+// evTime returns the ledger close time carried by a decoded contract event,
+// falling back to time.Now().UTC() when unset (e.g. in tests). Mirrors
+// txnTime for handlers that only receive the event (#471).
+func evTime(ev *ContractEvent) time.Time {
+	if ev != nil && !ev.LedgerCloseTime.IsZero() {
+		return ev.LedgerCloseTime.UTC()
+	}
+	return time.Now().UTC()
+}
+
 func (p *EventProcessor) processOperation(ctx context.Context, txn *Transaction, op *Operation) error {
 	switch {
 	case op.Type == "create_account":
@@ -201,7 +211,7 @@ func (p *EventProcessor) handlePayment(ctx context.Context, txn *Transaction, op
 		"hash":   txn.Hash,
 		"source": op.SourceAccount,
 		"ledger": txn.Ledger,
-	})
+	}, txnTime(txn))
 	return nil
 }
 
@@ -371,7 +381,7 @@ func (p *EventProcessor) onCircleCreated(ctx context.Context, ev *ContractEvent)
 		"creator":     payloadStr(ev.Payload, "creator"),
 		"tx_hash":     ev.TxHash,
 		"ledger":      ev.Ledger,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -403,7 +413,7 @@ func (p *EventProcessor) onMemberJoined(ctx context.Context, ev *ContractEvent) 
 		CircleID: c.ID,
 		UserID:   u.ID,
 		Status:   circle.MemberStatusActive,
-		JoinedAt: txnTime(txn),
+		JoinedAt: evTime(ev),
 	}
 	if err := p.circleRepo.CreateMember(ctx, member); err != nil {
 		if errors.Is(err, circle.ErrAlreadyMember) {
@@ -423,7 +433,7 @@ func (p *EventProcessor) onMemberJoined(ctx context.Context, ev *ContractEvent) 
 		"user_id":   u.ID.String(),
 		"wallet":    walletAddr,
 		"tx_hash":   ev.TxHash,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -495,7 +505,7 @@ func (p *EventProcessor) onContributionReceived(ctx context.Context, ev *Contrac
 		"round":           round,
 		"contribution_id": contrib.ID.String(),
 		"tx_hash":         ev.TxHash,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -568,7 +578,7 @@ func (p *EventProcessor) onPayoutExecuted(ctx context.Context, ev *ContractEvent
 		"round":        round,
 		"payout_id":    p2.ID.String(),
 		"tx_hash":      ev.TxHash,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -611,7 +621,7 @@ func (p *EventProcessor) onLateReported(ctx context.Context, ev *ContractEvent) 
 		"penalty_amount": penaltyAmount,
 		"strikes":        strikes,
 		"tx_hash":        ev.TxHash,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -655,7 +665,7 @@ func (p *EventProcessor) onMemberExited(ctx context.Context, ev *ContractEvent) 
 		"user_id":   u.ID.String(),
 		"penalty":   penalty,
 		"tx_hash":   ev.TxHash,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -719,7 +729,7 @@ func (p *EventProcessor) onDefaultRecorded(ctx context.Context, ev *ContractEven
 		"level":     level,
 		"reason":    "default",
 		"tx_hash":   ev.TxHash,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -755,7 +765,7 @@ func (p *EventProcessor) onCircleCompleted(ctx context.Context, ev *ContractEven
 		"circle_id":           c.ID.String(),
 		"total_contributions": totalContribs,
 		"tx_hash":             ev.TxHash,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -777,7 +787,7 @@ func (p *EventProcessor) onAuctionBid(ctx context.Context, ev *ContractEvent) er
 			"discount_bips": discountBips,
 			"round":         round,
 			"tx_hash":       ev.TxHash,
-		})
+		}, evTime(ev))
 		return nil
 	}
 
@@ -827,7 +837,7 @@ func (p *EventProcessor) onAuctionBid(ctx context.Context, ev *ContractEvent) er
 		"discount_bips": discountBips,
 		"round":         round,
 		"tx_hash":       ev.TxHash,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -856,7 +866,7 @@ func (p *EventProcessor) onVoteCast(ctx context.Context, ev *ContractEvent) erro
 			"vote_for":    voteFor,
 			"round":       round,
 			"tx_hash":     ev.TxHash,
-		})
+		}, evTime(ev))
 		return nil
 	}
 
@@ -918,7 +928,7 @@ func (p *EventProcessor) onVoteCast(ctx context.Context, ev *ContractEvent) erro
 		"recipient_id": recipientUser.ID.String(),
 		"round":        round,
 		"tx_hash":      ev.TxHash,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -947,12 +957,10 @@ func (p *EventProcessor) onDisputeRaised(ctx context.Context, ev *ContractEvent)
 
 	// #475 — Persist the dispute to circle_disputes so the API can query it.
 	// Resolve the raiser's internal user ID from their wallet address.
-	raiserID := ""
 	raiserUUID := ""
-	if member != "" {
+	if member != "" && p.userRepo != nil {
 		u, err := p.userRepo.FindByWalletAddress(ctx, member)
 		if err == nil && u != nil {
-			raiserID = u.ID.String()
 			raiserUUID = u.ID.String()
 		} else {
 			log.Warn().Str("wallet", member).Msg("DisputeRaised: raiser user not found, using wallet as identifier")
@@ -984,7 +992,7 @@ func (p *EventProcessor) onDisputeRaised(ctx context.Context, ev *ContractEvent)
 		"member_wallet": member,
 		"evidence_hash": evidenceHash,
 		"tx_hash":       ev.TxHash,
-	})
+	}, evTime(ev))
 	return nil
 }
 
@@ -1027,7 +1035,7 @@ func (p *EventProcessor) onFeeDeposited(ctx context.Context, ev *ContractEvent) 
 		"amount":    amount,
 		"tx_hash":   ev.TxHash,
 		"ledger":    ev.Ledger,
-	})
+	}, evTime(ev))
 	return nil
 }
 
